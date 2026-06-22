@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rancho Raíz · Terror Visual Pipeline</title>
+<meta name="description" content="Pipeline de terror visual con WebGL, Three.js 3D, SVG y audio reactivo. Generación procedural de contenido audiovisual.">
+<meta property="og:title" content="Rancho Raíz · Terror Visual Pipeline">
+<meta property="og:description" content="WebGL shaders + Three.js 3D + SVG + Canvas + Audio reactivo. 20 demos, 10 shaders, 9 presets 3D.">
+<meta property="og:type" content="website">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0a;color:#e0e0e0;font-family:'Segoe UI',system-ui,sans-serif;overflow-x:hidden}
+::selection{background:#ff0044;color:#fff}
+
+/* HERO */
+.hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;overflow:hidden}
+.hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at center,rgba(255,0,68,0.08) 0%,transparent 70%);pointer-events:none}
+
+/* LOGO 3D */
+.logo-container{perspective:800px;margin-bottom:2rem}
+.logo-3d{width:180px;height:180px;border-radius:50%;overflow:hidden;border:3px solid rgba(255,0,68,0.4);box-shadow:0 0 60px rgba(255,0,68,0.3),0 0 120px rgba(255,0,68,0.1);animation:logoFloat 6s ease-in-out infinite,logoGlow 3s ease-in-out infinite alternate;transform-style:preserve-3d}
+.logo-3d img{width:100%;height:100%;object-fit:cover;filter:saturate(1.2) contrast(1.1)}
+@keyframes logoFloat{0%,100%{transform:translateY(0) rotateY(0deg)}25%{transform:translateY(-15px) rotateY(5deg)}50%{transform:translateY(-8px) rotateY(0deg)}75%{transform:translateY(-20px) rotateY(-5deg)}}
+@keyframes logoGlow{0%{box-shadow:0 0 40px rgba(255,0,68,0.2),0 0 80px rgba(255,0,68,0.05)}100%{box-shadow:0 0 80px rgba(255,0,68,0.5),0 0 160px rgba(255,0,68,0.15)}}
+
+.hero h1{font-size:clamp(2rem,6vw,4rem);font-weight:900;letter-spacing:-0.03em;text-align:center;background:linear-gradient(135deg,#fff 0%,#ff0044 50%,#ff6600 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:0.5rem}
+.hero .subtitle{font-size:clamp(0.9rem,2.5vw,1.3rem);color:#888;text-align:center;max-width:600px;line-height:1.6;margin-bottom:2rem}
+.hero .tag{display:inline-block;background:rgba(255,0,68,0.15);border:1px solid rgba(255,0,68,0.3);color:#ff4488;padding:0.3rem 0.8rem;border-radius:20px;font-size:0.75rem;font-weight:600;letter-spacing:0.05em;margin-bottom:1.5rem}
+
+/* SCROLL INDICATOR */
+.scroll-hint{position:absolute;bottom:2rem;animation:bounce 2s infinite}
+.scroll-hint svg{width:24px;height:24px;stroke:#555;fill:none;stroke-width:2}
+@keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(8px)}}
+
+/* STATS */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:1rem;max-width:800px;width:90%;margin:0 auto 4rem}
+.stat{text-align:center;padding:1.5rem 1rem;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:12px}
+.stat .num{font-size:2rem;font-weight:900;background:linear-gradient(135deg,#ff0044,#ff6600);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.stat .label{font-size:0.7rem;color:#666;text-transform:uppercase;letter-spacing:0.1em;margin-top:0.3rem}
+
+/* ARCHITECTURE */
+.arch{max-width:900px;width:90%;margin:0 auto 4rem}
+.arch h2{font-size:1.5rem;font-weight:700;margin-bottom:1.5rem;text-align:center}
+.layers{display:flex;flex-direction:column;gap:0.5rem}
+.layer{display:flex;align-items:center;gap:1rem;padding:0.8rem 1.2rem;background:rgba(255,255,255,0.03);border-left:3px solid var(--c,#ff0044);border-radius:0 8px 8px 0;transition:transform 0.2s,background 0.2s}
+.layer:hover{transform:translateX(8px);background:rgba(255,255,255,0.06)}
+.layer .icon{font-size:1.5rem;width:2rem;text-align:center}
+.layer .name{font-weight:600;font-size:0.9rem}
+.layer .desc{font-size:0.75rem;color:#888}
+
+/* DEMOS GRID */
+.demos{max-width:1000px;width:90%;margin:0 auto 4rem}
+.demos h2{font-size:1.5rem;font-weight:700;margin-bottom:0.5rem;text-align:center}
+.demos .sub{text-align:center;color:#666;font-size:0.85rem;margin-bottom:2rem}
+.demo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1.5rem}
+.demo-card{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:12px;overflow:hidden;transition:transform 0.3s,border-color 0.3s;cursor:pointer;text-decoration:none;color:inherit}
+.demo-card:hover{transform:translateY(-4px);border-color:rgba(255,0,68,0.4)}
+.demo-card .preview{height:160px;position:relative;overflow:hidden}
+.demo-card .preview iframe{width:200%;height:200%;transform:scale(0.5);transform-origin:top left;border:none;pointer-events:none}
+.demo-card .info{padding:1rem}
+.demo-card .info h3{font-size:0.95rem;font-weight:700;margin-bottom:0.3rem}
+.demo-card .info p{font-size:0.75rem;color:#888;line-height:1.4}
+.demo-card .tags{display:flex;gap:0.4rem;margin-top:0.5rem;flex-wrap:wrap}
+.demo-card .tags span{font-size:0.6rem;padding:0.15rem 0.5rem;border-radius:10px;background:rgba(255,0,68,0.1);color:#ff4488;border:1px solid rgba(255,0,68,0.2)}
+
+/* TECH */
+.tech{max-width:800px;width:90%;margin:0 auto 4rem}
+.tech h2{font-size:1.5rem;font-weight:700;margin-bottom:1.5rem;text-align:center}
+.tech-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:1rem}
+.tech-item{padding:1.2rem;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px}
+.tech-item h4{font-size:0.85rem;font-weight:600;margin-bottom:0.3rem;color:#ff4488}
+.tech-item p{font-size:0.75rem;color:#888;line-height:1.4}
+
+/* CTA */
+.cta{text-align:center;padding:4rem 2rem;background:linear-gradient(180deg,transparent,rgba(255,0,68,0.05))}
+.cta h2{font-size:1.8rem;font-weight:900;margin-bottom:1rem}
+.cta p{color:#888;max-width:500px;margin:0 auto 2rem;line-height:1.6}
+.cta a{display:inline-block;padding:0.8rem 2rem;background:linear-gradient(135deg,#ff0044,#ff6600);color:#fff;text-decoration:none;border-radius:8px;font-weight:700;font-size:0.95rem;transition:transform 0.2s,box-shadow 0.2s}
+.cta a:hover{transform:scale(1.05);box-shadow:0 0 30px rgba(255,0,68,0.4)}
+
+/* FOOTER */
+footer{text-align:center;padding:2rem;color:#444;font-size:0.7rem;border-top:1px solid rgba(255,255,255,0.05)}
+
+/* SCANLINE OVERLAY */
+body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px);pointer-events:none;z-index:9999}
+</style>
+</head>
+<body>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="tag">TERROR VISUAL PIPELINE</div>
+  <div class="logo-container">
+    <div class="logo-3d">
+      <img src="logo_rancho_raiz.jpg" alt="Rancho Raíz">
+    </div>
+  </div>
+  <h1>Rancho Raíz</h1>
+  <p class="subtitle">Pipeline de terror visual procedural — WebGL shaders, Three.js 3D, SVG vectorial, Canvas CRT y audio reactivo. Cada frame es único.</p>
+
+  <div class="scroll-hint">
+    <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+  </div>
+</section>
+
+<!-- STATS -->
+<section class="stats">
+  <div class="stat"><div class="num">10</div><div class="label">Shaders GLSL</div></div>
+  <div class="stat"><div class="num">9</div><div class="label">Presets 3D</div></div>
+  <div class="stat"><div class="num">15</div><div class="label">Primitivas</div></div>
+  <div class="stat"><div class="num">7</div><div class="label">Capas</div></div>
+  <div class="stat"><div class="num">∞</div><div class="label">Combinaciones</div></div>
+</section>
+
+<!-- ARCHITECTURE -->
+<section class="arch">
+  <h2>Arquitectura del Pipeline</h2>
+  <div class="layers">
+    <div class="layer" style="--c:#ff0044"><div class="icon">🔥</div><div><div class="name">WebGL Shader</div><div class="desc">10 fragment shaders animados — respiración, vértigo, fractales, perlin 3D</div></div></div>
+    <div class="layer" style="--c:#00ffff"><div class="icon">🧊</div><div><div class="name">Three.js 3D</div><div class="desc">Geometrías deformadas, cámaras tipo director, iluminación neon, partículas volumétricas</div></div></div>
+    <div class="layer" style="--c:#ff6600"><div class="icon">👁️</div><div><div class="name">SVG Vectorial</div><div class="desc">10 entidades deformables — ojos, caras, monstruos, tentáculos, espirales</div></div></div>
+    <div class="layer" style="--c:#ffff00"><div class="icon">📺</div><div><div class="name">Canvas CRT</div><div class="desc">Estática, scanlines, barras de glitch, viñeta — estética VHS</div></div></div>
+    <div class="layer" style="--c:#ff00ff"><div class="icon">✨</div><div><div class="name">Partículas</div><div class="desc">80 átomos flotantes que reaccionan a la intensidad del director</div></div></div>
+    <div class="layer" style="--c:#00ff88"><div class="icon">💬</div><div><div class="name">Subtítulos Cinemáticos</div><div class="desc">Texto timed con glitch — 25 frases de horror, timing variable</div></div></div>
+    <div class="layer" style="--c:#8866ff"><div class="icon">🔊</div><div><div class="name">Audio Reactivo</div><div class="desc">Web Audio API — 8 loops WAV procedural, reactividad RMS en tiempo real</div></div></div>
+  </div>
+</section>
+
+<!-- DEMOS -->
+<section class="demos">
+  <h2>Demos en Vivo</h2>
+  <p class="sub">Click en cualquier demo para abrirla en pantalla completa</p>
+  <div class="demo-grid">
+    <a class="demo-card" href="demos/16_esfera_flotante_3d/index.html" target="_blank">
+      <div class="preview"><iframe src="demos/16_esfera_flotante_3d/index.html" loading="lazy"></iframe></div>
+      <div class="info"><h3>Esfera Flotante</h3><p>Geometría 3D con deformación orgánica y luz neon sobre shader de respiración.</p>
+      <div class="tags"><span>Three.js</span><span>esfera</span><span>neon</span></div></div>
+    </a>
+    <a class="demo-card" href="demos/17_monolito_corrupto/index.html" target="_blank">
+      <div class="preview"><iframe src="demos/17_monolito_corrupto/index.html" loading="lazy"></iframe></div>
+      <div class="info"><h3>Monolito Corrupto</h3><p>Cubo masivo que se deforma con pulso cardíaco. Presencia opresiva.</p>
+      <div class="tags"><span>Three.js</span><span>cubo</span><span>spot</span></div></div>
+    </a>
+    <a class="demo-card" href="demos/18_lovecraft_total/index.html" target="_blank">
+      <div class="preview"><iframe src="demos/18_lovecraft_total/index.html" loading="lazy"></iframe></div>
+      <div class="info"><h3>Lovecraft Total</h3><p>Entidad custom con tentáculos 3D, deformación máxima, caos total.</p>
+      <div class="tags"><span>Three.js</span><span>custom</span><span>parallax</span></div></div>
+    </a>
+    <a class="demo-card" href="demos/19_toro_siniestro/index.html" target="_blank">
+      <div class="preview"><iframe src="demos/19_toro_siniestro/index.html" loading="lazy"></iframe></div>
+      <div class="info"><h3>Toro Siniestro</h3><p>Toro wireframe con cámara dolly y espiral de vértigo.</p>
+      <div class="tags"><span>Three.js</span><span>toro</span><span>wireframe</span></div></div>
+    </a>
+    <a class="demo-card" href="demos/20_colapso_total/index.html" target="_blank">
+      <div class="preview"><iframe src="demos/20_colapso_total/index.html" loading="lazy"></iframe></div>
+      <div class="info"><h3>Colapso Dimensional</h3><p>Esfera wireframe gigante, 400 partículas, todo se desintegra.</p>
+      <div class="tags"><span>Three.js</span><span>wireframe</span><span>caos</span></div></div>
+    </a>
+  </div>
+</section>
+
+<!-- TECH -->
+<section class="tech">
+  <h2>Tecnologías</h2>
+  <div class="tech-grid">
+    <div class="tech-item"><h4>WebGL / GLSL</h4><p>10 fragment shaders procedurales: respiración, vértigo, fractales Mandelbrot, ruido Perlin 3D, ondas de choque.</p></div>
+    <div class="tech-item"><h4>Three.js r128</h4><p>Capa 3D con 5 geometrías, 5 cámaras, 4 sistemas de iluminación, deformación de vértices, post-procesado.</p></div>
+    <div class="tech-item"><h4>SVG Animado</h4><p>10 entidades vectoriales deformables con filtros de distorsión, parallax de 3 capas, movimientoBrowniano.</p></div>
+    <div class="tech-item"><h4>Canvas 2D</h4><p>CRT sintético: estática, scanlines, barras de glitch, viñeta. + 80 partículas flotantes con física.</p></div>
+    <div class="tech-item"><h4>Web Audio API</h4><p>Análisis RMS en tiempo real, 8 loops WAV procedural, crossfade primario/secundario reactivo.</p></div>
+    <div class="tech-item"><h4>Python Generator</h4><p>Orquestador que genera HTMLs standalone únicos. ADN de movimiento, presets de director, 25 frases de horror.</p></div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta">
+  <h2>Contenido Único Cada Vez</h2>
+  <p>Cada ejecución del pipeline genera un video visual completamente único. ADN de movimiento aleatorio, combinaciones de shader + paleta + entidad + Three.js = infinitas variaciones.</p>
+  <a href="https://wa.me/5492645017161?text=Vi%20el%20demo%20del%20Terror%20Visual%20Pipeline%20%F0%9F%91%BB" target="_blank">💬 Consultar por WhatsApp</a>
+</section>
+
+<footer>
+  Rancho Raíz · Barreal, San Juan, Argentina · Pipeline v3.0 — WebGL + Three.js + SVG + Canvas + Audio
+</footer>
+
+</body>
+</html>

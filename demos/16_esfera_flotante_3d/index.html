@@ -1,0 +1,1244 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>16_esfera_flotante_3d</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body, html { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: 'Courier New', monospace; }
+    canvas, svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+    .glitch-filtro { filter: url(#filtro-maldito); }
+    #cajaTexto {
+        position: absolute; bottom: 12%; left: 50%; transform: translateX(-50%);
+        color: #ff0000; font-size: 26px; font-weight: bold; text-align: center;
+        text-shadow: 0 0 10px #000, 0 0 5px #ff0000; z-index: 100; width: 85%;
+        pointer-events: none; letter-spacing: 2px; line-height: 1.4;
+    }
+    .glitch-texto { animation: temblor 0.1s infinite; color: #fff !important; text-shadow: 3px 3px #ff0000, -3px -3px #00f !important; }
+    @keyframes temblor {
+        0% { transform: translateX(-50%) translate(2px, 1px); }
+        50% { transform: translateX(-50%) translate(-1px, -2px); }
+        100% { transform: translateX(-50%) translate(1px, 2px); }
+    }
+    #hud {
+        position: absolute; top: 10px; left: 10px; color: #ff0000;
+        font-size: 11px; opacity: 0.5; z-index: 200; pointer-events: none;
+    }
+    #btnAudio {
+        position: absolute; top: 10px; right: 10px; z-index: 200;
+        background: #111; color: #ff0000; border: 1px solid #ff0000;
+        padding: 5px 10px; cursor: pointer; font-family: 'Courier New', monospace;
+        font-size: 11px; border-radius: 2px;
+    }
+    #btnAudio:hover { background: #ff0000; color: #000; }
+    #canvasParticulas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 5; pointer-events: none; }
+    #transicionFade { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #000; opacity: 0; z-index: 90; pointer-events: none; transition: opacity 0.3s; }
+    #barraDirector {
+        position: absolute; bottom: 0; left: 0; height: 3px; width: 0%; z-index: 200;
+        background: #ff0000; opacity: 0.6; pointer-events: none; transition: width 0.1s linear;
+    }
+</style>
+</head>
+<body>
+
+<div id="hud">16_esfera_flotante_3d | respiracion | sangre | ojos | dark_ambient | adn:colapsar+convulsionar | 3d:esfera_flotante</div>
+<button id="btnAudio">&#9654; SONIDO</button>
+
+<canvas id="canvasFondo"></canvas>
+
+<canvas id="canvas3d" style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:2;pointer-events:none;display:block;opacity:0.95"></canvas>
+
+<svg id="svgCapa" class="glitch-filtro" viewBox="0 0 800 800" preserveAspectRatio="xMidYMid slice">
+    <defs>
+        <filter id="filtro-maldito">
+            <feTurbulence type="fractalNoise" baseFrequency="0.05" numOctaves="3" result="ruido"/>
+            <feDisplacementMap id="desplazamiento" in="SourceGraphic" in2="ruido" scale="0" xChannelSelector="R" yChannelSelector="G"/>
+        </filter>
+    </defs>
+    <g id="parallaxBg" transform="translate(400, 400)" opacity="0">
+        
+    </g>
+    <g id="entidad" transform="translate(400, 400)">
+        
+    <g transform="translate(0,0) scale(1.0)">
+        <ellipse cx="-80" cy="0" rx="60" ry="70" fill="#fff" stroke="#000" stroke-width="4"/>
+        <circle cx="-80" cy="0" r="30" fill="#000"/>
+        <circle cx="-80" cy="0" r="8" fill="#ff0000"/>
+        <ellipse cx="80" cy="0" rx="60" ry="70" fill="#fff" stroke="#000" stroke-width="4"/>
+        <circle cx="80" cy="0" r="30" fill="#000"/>
+        <circle cx="80" cy="0" r="8" fill="#ff0000"/>
+        <line x1="-140" y1="-80" x2="-20" y2="-60" stroke="#000" stroke-width="6"/>
+        <line x1="20" y1="-60" x2="140" y2="-80" stroke="#000" stroke-width="6"/>
+    </g>
+    </g>
+    <g id="parallaxFg" transform="translate(400, 400)" opacity="0">
+        
+    </g>
+</svg>
+
+<canvas id="canvasEstatica"></canvas>
+<canvas id="canvasParticulas"></canvas>
+<div id="transicionFade"></div>
+<div id="barraDirector"></div>
+<div id="cajaTexto"></div>
+
+<audio id="audioP" loop preload="auto"><source src="../../sonidos/dark_ambient.wav" type="audio/wav"/></audio>
+<audio id="audioS" loop preload="auto"><source src="../../sonidos/static_crt.wav" type="audio/wav"/></audio>
+
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// === THREE.JS LAYER CLASS ===
+/**
+ * THREEJS_LAYER.js — Capa 3D para el Pipeline de Terror Visual
+ * ==============================================================
+ * Three.js como capa modular: se superpone al WebGL shader + SVG existente.
+ * Geometrías 3D deformadas, partículas volumétricas, post-procesado,
+ * control de cámara tipo "director de cine".
+ *
+ * Arquitectura:
+ *   [WebGL Shader BG] → [Three.js Canvas 3D] → [SVG Entity] → [Canvas CRT] → [Canvas Particles] → [Subtítulos]
+ *
+ * Three.js NO reemplaza nada — AÑADE profundidad cuando el director lo pide.
+ *
+ * Uso:
+ *   const layer3d = new ThreejsLayer(canvas, config);
+ *   layer3d.update(t, intensidad);
+ *   layer3d.dispose();
+ */
+
+class ThreejsLayer {
+    constructor(canvas, config = {}) {
+        this.canvas = canvas;
+        this.config = Object.assign({
+            // Geometría principal
+            geometria: 'esfera',      // esfera, cubo, toro, octaedro, custom
+            escala: 1.0,
+            deformacion: 0.0,         // 0-1, cuánto se deforma
+            wireframe: false,
+
+            // Cámara
+            camara: 'orbitar',        // orbitar, dolly, truck, tilt, estatica
+            camara_velocidad: 0.5,
+            camara_distancia: 4.0,
+            fov: 75,
+
+            // Iluminacion
+            iluminacion: 'puntual',   // puntual, ambiental, spot, neon
+            luz_color: '#ff0000',
+            luz_intensidad: 1.0,
+            sombras: false,
+
+            // Partículas 3D
+            particulas_3d: 0,         // 0 = desactivado, 50-500 partículas
+            particulas_tamano: 0.08,
+            particulas_velocidad: 0.3,
+
+            // Post-procesado
+            bloom: 0.0,              // 0-1, resplandor
+            glitch_3d: 0.0,          // 0-1, distorsión 3D
+            dof: 0.0,               // 0-1, profundidad de campo (blur)
+            dof_foco: 2.0,          // distancia del foco
+
+            // Comportamiento reactivo
+            reactivo: true,          // reacciona al director intensity
+            rotacion_automatica: true,
+
+            // Paleta (hereda del shader si está disponible)
+            color_base: '#ff0000',
+        }, config);
+
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
+        this.meshPrincipal = null;
+        this.particulas = null;
+        this.clock = null;
+        this.init();
+    }
+
+    init() {
+        // Scene
+        this.scene = new THREE.Scene();
+        this.scene.fog = new THREE.FogExp2(0x000000, 0.06);
+
+        // Camera
+        this.camera = new THREE.PerspectiveCamera(
+            this.config.fov,
+            this.canvas.width / this.canvas.height,
+            0.1,
+            100
+        );
+        this.camera.position.set(0, 0, this.config.camara_distancia);
+
+        // Renderer
+        this.renderer = new THREE.WebGLRenderer({
+            canvas: this.canvas,
+            alpha: true,         // transparente — se superpone al BG
+            antialias: false,    // performance
+        });
+        this.renderer.setSize(this.canvas.width, this.canvas.height);
+        this.renderer.setPixelRatio(1);  // forzar 1x para performance
+        this.renderer.setClearColor(0x000000, 0); // transparente
+
+        // Clock
+        this.clock = new THREE.Clock();
+
+        // Fondo oscuro semi-transparente para que los objetos 3D resalten
+        const backdropGeo = new THREE.PlaneGeometry(50, 50);
+        const backdropMat = new THREE.MeshBasicMaterial({
+            color: 0x000000,
+            transparent: true,
+            opacity: 0.35,
+            side: THREE.DoubleSide
+        });
+        this.backdrop = new THREE.Mesh(backdropGeo, backdropMat);
+        this.backdrop.position.z = -5;
+        this.scene.add(this.backdrop);
+
+        // Luces
+        this._crearLuces();
+
+        // Geometría principal
+        this._crearGeometria();
+
+        // Partículas 3D (si están configuradas)
+        if (this.config.particulas_3d > 0) {
+            this._crearParticulas();
+        }
+
+        // Post-procesado simple (sin EffectComposer para mantenerlo ligero)
+        this._initPostProcess();
+    }
+
+    _crearLuces() {
+        const color = new THREE.Color(this.config.luz_color);
+        const intensidad = this.config.luz_intensidad;
+
+        // Ambiental siempre presente (bajo)
+        const ambient = new THREE.AmbientLight(0x111111, 0.3);
+        this.scene.add(ambient);
+
+        if (this.config.iluminacion === 'puntual') {
+            const light = new THREE.PointLight(color, intensidad, 20);
+            light.position.set(2, 2, 3);
+            this.scene.add(light);
+            this.luzPrincipal = light;
+        } else if (this.config.iluminacion === 'spot') {
+            const light = new THREE.SpotLight(color, intensidad);
+            light.position.set(0, 5, 5);
+            light.angle = Math.PI / 6;
+            light.penumbra = 0.5;
+            this.scene.add(light);
+            this.luzPrincipal = light;
+        } else if (this.config.iluminacion === 'neon') {
+            // Múltiples luces de colores para efecto neón
+            const colors = [0xff0044, 0x0044ff, 0x00ff44];
+            colors.forEach((c, i) => {
+                const l = new THREE.PointLight(c, 0.6, 15);
+                l.position.set(
+                    Math.cos(i * 2.094) * 3,
+                    Math.sin(i * 1.5) * 2,
+                    Math.sin(i * 2.094) * 3
+                );
+                this.scene.add(l);
+            });
+            this.luzPrincipal = null;
+        }
+        // 'ambiental' solo tiene la ambiental
+    }
+
+    _crearGeometria() {
+        let geometry;
+        const geo = this.config.geometria;
+
+        if (geo === 'esfera') {
+            geometry = new THREE.SphereGeometry(1, 32, 32);
+        } else if (geo === 'cubo') {
+            geometry = new THREE.BoxGeometry(1.5, 1.5, 1.5, 8, 8, 8); // subdivisions para deformar
+        } else if (geo === 'toro') {
+            geometry = new THREE.TorusGeometry(1, 0.3, 16, 32);
+        } else if (geo === 'octaedro') {
+            geometry = new THREE.OctahedronGeometry(1, 2);
+        } else if (geo === 'custom') {
+            // Geometría compuesta: esfera con tentáculos
+            geometry = new this._geometriaMonstruo();
+        } else {
+            geometry = new THREE.SphereGeometry(1, 16, 16);
+        }
+
+        const material = new THREE.MeshPhongMaterial({
+            color: new THREE.Color(this.config.color_base),
+            wireframe: this.config.wireframe,
+            transparent: true,
+            opacity: 0.85,
+            shininess: 100,
+            emissive: new THREE.Color(this.config.color_base),
+            emissiveIntensity: 0.6,
+        });
+
+        this.meshPrincipal = new THREE.Mesh(geometry, material);
+        this.meshPrincipal.scale.setScalar(this.config.escala);
+        this.scene.add(this.meshPrincipal);
+
+        // Guardar posiciones originales para deformación
+        this.posicionesOriginales = geometry.attributes.position.array.slice();
+    }
+
+    _geometriaMonstruo() {
+        // Geometría procedural: esfera con protuberancias
+        const geo = new THREE.SphereGeometry(1, 24, 24);
+        const pos = geo.attributes.position;
+        for (let i = 0; i < pos.count; i++) {
+            const x = pos.getX(i);
+            const y = pos.getY(i);
+            const z = pos.getZ(i);
+            const n = Math.sin(x * 3) * Math.cos(y * 4) * 0.2;
+            pos.setX(i, x + x * n);
+            pos.setY(i, y + y * n);
+            pos.setZ(i, z + z * n);
+        }
+        geo.computeVertexNormals();
+        return geo;
+    }
+
+    _crearParticulas() {
+        const count = this.config.particulas_3d;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(count * 3);
+        const velocities = new Float32Array(count * 3);
+        const sizes = new Float32Array(count);
+
+        for (let i = 0; i < count; i++) {
+            // Esfera distribuida
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(2 * Math.random() - 1);
+            const r = 2 + Math.random() * 3;
+
+            positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+            positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+            positions[i * 3 + 2] = r * Math.cos(phi);
+
+            velocities[i * 3] = (Math.random() - 0.5) * 0.01;
+            velocities[i * 3 + 1] = (Math.random() - 0.5) * 0.01;
+            velocities[i * 3 + 2] = (Math.random() - 0.5) * 0.01;
+
+            sizes[i] = this.config.particulas_tamano * (0.5 + Math.random());
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+
+        this.velocidadesParticulas = velocities;
+
+        const material = new THREE.PointsMaterial({
+            color: new THREE.Color(this.config.color_base),
+            size: this.config.particulas_tamano,
+            transparent: true,
+            opacity: 0.6,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+
+        this.particulas = new THREE.Points(geometry, material);
+        this.scene.add(this.particulas);
+    }
+
+    _initPostProcess() {
+        // Bloom fake: emissive más fuerte en objetos bright
+        // Se logra ajustando emissiveIntensity en update()
+        this.postProcess = {
+            bloomBase: this.config.bloom,
+            glitchBase: this.config.glitch_3d,
+            dofBase: this.config.dof,
+        };
+    }
+
+    // ============================================================
+    //  UPDATE — llamado cada frame desde el orquestador
+    // ============================================================
+    update(t, intensidad = 0.5) {
+        if (!this.renderer) return;
+
+        const intensidadFinal = this.config.reactivo ? intensidad : 0.5;
+
+        // --- Cámara ---
+        this._updateCamara(t, intensidadFinal);
+
+        // --- Geometría ---
+        this._updateGeometria(t, intensidadFinal);
+
+        // --- Partículas ---
+        if (this.particulas) {
+            this._updateParticulas(t, intensidadFinal);
+        }
+
+        // --- Luces ---
+        this._updateLuces(t, intensidadFinal);
+
+        // --- Post-procesado ---
+        this._updatePostProcess(intensidadFinal);
+
+        // --- Render ---
+        this.renderer.render(this.scene, this.camera);
+    }
+
+    _updateCamara(t, intensidad) {
+        const vel = this.config.camara_velocidad;
+        const dist = this.config.camara_distancia;
+
+        if (this.config.camara === 'orbitar') {
+            this.camera.position.x = Math.cos(t * vel) * dist;
+            this.camera.position.z = Math.sin(t * vel) * dist;
+            this.camera.position.y = Math.sin(t * vel * 0.5) * 1.5;
+            this.camera.lookAt(0, 0, 0);
+        } else if (this.config.camara === 'dolly') {
+            // Avanza y retrocede (zoom physical)
+            const dollyZ = dist + Math.sin(t * vel * 0.7) * 2;
+            this.camera.position.z = dollyZ;
+            this.camera.position.x = Math.sin(t * vel * 0.3) * 0.5;
+            this.camera.lookAt(0, 0, 0);
+        } else if (this.config.camara === 'truck') {
+            // Movimiento lateral
+            this.camera.position.x = Math.sin(t * vel) * dist * 0.8;
+            this.camera.position.z = dist;
+            this.camera.position.y = 1 + Math.sin(t * vel * 0.4) * 0.5;
+            this.camera.lookAt(0, 0, 0);
+        } else if (this.config.camara === 'tilt') {
+            // Ángulo inclinado (dutch angle)
+            this.camera.position.set(0, 0, dist);
+            this.camera.rotation.z = Math.sin(t * vel * 0.3) * 0.3;
+            this.camera.lookAt(0, 0, 0);
+        }
+        // 'estatica' no mueve la cámara
+    }
+
+    _updateGeometria(t, intensidad) {
+        if (!this.meshPrincipal) return;
+
+        const geo = this.meshPrincipal.geometry;
+        const pos = geo.attributes.position;
+        const deform = this.config.deformacion * intensidad;
+
+        if (deform > 0 && this.posicionesOriginales) {
+            // Deformación orgánica basada en ruido
+            for (let i = 0; i < pos.count; i++) {
+                const ox = this.posicionesOriginales[i * 3];
+                const oy = this.posicionesOriginales[i * 3 + 1];
+                const oz = this.posicionesOriginales[i * 3 + 2];
+
+                // Ruido simplex-like (pseudo-random but smooth)
+                const nx = Math.sin(ox * 3.0 + t * 2.0) * Math.cos(oy * 2.5 + t * 1.5);
+                const ny = Math.cos(oy * 3.0 + t * 1.8) * Math.sin(oz * 2.0 + t * 2.2);
+                const nz = Math.sin(oz * 2.5 + t * 1.3) * Math.cos(ox * 3.0 + t * 0.7);
+
+                pos.setX(i, ox + nx * deform * 0.3);
+                pos.setY(i, oy + ny * deform * 0.3);
+                pos.setZ(i, oz + nz * deform * 0.3);
+            }
+            pos.needsUpdate = true;
+            geo.computeVertexNormals();
+        }
+
+        // Rotación
+        if (this.config.rotacion_automatica) {
+            this.meshPrincipal.rotation.x = t * 0.3 * intensidad;
+            this.meshPrincipal.rotation.y = t * 0.5 * intensidad;
+        }
+
+        // Escala pulsante (reactiva)
+        const pulso = 1.0 + Math.sin(t * 3.0) * 0.1 * intensidad;
+        this.meshPrincipal.scale.setScalar(this.config.escala * pulso);
+    }
+
+    _updateParticulas(t, intensidad) {
+        if (!this.particulas) return;
+
+        const pos = this.particulas.geometry.attributes.position;
+        const vel = this.velocidadesParticulas;
+        const velMult = this.config.particulas_velocidad * (0.5 + intensidad);
+
+        for (let i = 0; i < pos.count; i++) {
+            let x = pos.getX(i) + vel[i * 3] * velMult;
+            let y = pos.getY(i) + vel[i * 3 + 1] * velMult;
+            let z = pos.getZ(i) + vel[i * 3 + 2] * velMult;
+
+            // wrapping — si se alejan mucho, reaparecen cerca
+            const dist = Math.sqrt(x * x + y * y + z * z);
+            if (dist > 6) {
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(2 * Math.random() - 1);
+                const r = 2 + Math.random() * 2;
+                x = r * Math.sin(phi) * Math.cos(theta);
+                y = r * Math.sin(phi) * Math.sin(theta);
+                z = r * Math.cos(phi);
+            }
+
+            pos.setXYZ(i, x, y, z);
+        }
+        pos.needsUpdate = true;
+
+        // Opacidad reactiva
+        this.particulas.material.opacity = 0.3 + intensidad * 0.5;
+    }
+
+    _updateLuces(t, intensidad) {
+        if (this.luzPrincipal) {
+            // Pulsación de la luz principal
+            this.luzPrincipal.intensity = this.config.luz_intensidad *
+                (0.7 + Math.sin(t * 2.0) * 0.3 * intensidad);
+
+            // Movimiento sutil de la luz
+            this.luzPrincipal.position.x = 2 + Math.sin(t * 0.5) * 1;
+            this.luzPrincipal.position.y = 2 + Math.cos(t * 0.7) * 0.5;
+        }
+    }
+
+    _updatePostProcess(intensidad) {
+        // Bloom: ajustar emissiveIntensity
+        if (this.meshPrincipal && this.postProcess.bloomBase > 0) {
+            this.meshPrincipal.material.emissiveIntensity =
+                0.15 + intensidad * this.postProcess.bloomBase * 0.8;
+        }
+
+        // Glitch 3D: distorsionar la geometría más fuerte
+        if (this.postProcess.glitchBase > 0 && this.config.deformacion > 0) {
+            // Ya se maneja en _updateGeometria con intensidad
+        }
+
+        // DOF: cambiar near/far de la cámara (simulado)
+        if (this.postProcess.dofBase > 0) {
+            const blurFactor = this.postProcess.dofBase * intensidad;
+            this.camera.near = 0.1 + blurFactor * 0.5;
+            this.camera.far = 100 - blurFactor * 30;
+            this.camera.updateProjectionMatrix();
+        }
+    }
+
+    // ============================================================
+    //  RESIZE
+    // ============================================================
+    resize(w, h) {
+        this.canvas.width = w;
+        this.canvas.height = h;
+        this.renderer.setSize(w, h);
+        this.camera.aspect = w / h;
+        this.camera.updateProjectionMatrix();
+    }
+
+    // ============================================================
+    //  CLEANUP
+    // ============================================================
+    dispose() {
+        if (this.renderer) {
+            this.renderer.dispose();
+            this.renderer = null;
+        }
+        if (this.scene) {
+            this.scene.traverse(obj => {
+                if (obj.geometry) obj.geometry.dispose();
+                if (obj.material) obj.material.dispose();
+            });
+        }
+    }
+}
+
+// ============================================================
+//  PRESETS — Configuraciones pre-armadas para el director
+// ============================================================
+const THREEJS_PRESETS = {
+    // Efectos sutiles (capa delicada)
+    sutiles: {
+        esfera_flotante: {
+            geometria: 'esfera', escala: 0.6, deformacion: 0.2,
+            camara: 'orbitar', camara_velocidad: 0.2, camara_distancia: 5,
+            iluminacion: 'puntual', luz_color: '#ff0044', luz_intensidad: 0.5,
+            particulas_3d: 30, bloom: 0.2, reactivo: true,
+        },
+        espiral_siniestra: {
+            geometria: 'toro', escala: 0.8, deformacion: 0.3,
+            wireframe: true, camara: 'dolly', camara_velocidad: 0.3,
+            iluminacion: 'neon', particulas_3d: 50, bloom: 0.3,
+        },
+    },
+
+    // Efectos medios (capa dominante)
+    medios: {
+        monolito: {
+            geometria: 'cubo', escala: 1.2, deformacion: 0.4,
+            camara: 'truck', camara_velocidad: 0.4, camara_distancia: 3.5,
+            iluminacion: 'spot', luz_color: '#0044ff', luz_intensidad: 1.2,
+            sombras: true, particulas_3d: 100, bloom: 0.5,
+        },
+        cráneo_electrico: {
+            geometria: 'octaedro', escala: 1.0, deformacion: 0.6,
+            camara: 'orbitar', camara_velocidad: 0.6,
+            iluminacion: 'puntual', luz_color: '#00ff44', luz_intensidad: 1.5,
+            particulas_3d: 80, bloom: 0.6, glitch_3d: 0.3,
+        },
+    },
+
+    // Efectos fuertes (caos total)
+    fuertes: {
+        entidad_lovecraft: {
+            geometria: 'custom', escala: 1.5, deformacion: 0.9,
+            camara: 'orbitar', camara_velocidad: 0.8, camara_distancia: 3,
+            iluminacion: 'neon', particulas_3d: 200, bloom: 0.8,
+            glitch_3d: 0.6, rotacion_automatica: true,
+        },
+        colapso_dimensional: {
+            geometria: 'esfera', escala: 2.0, deformacion: 1.0,
+            wireframe: true, camara: 'dolly', camara_velocidad: 1.0,
+            iluminacion: 'puntual', luz_color: '#ff0000', luz_intensidad: 2.0,
+            particulas_3d: 300, bloom: 1.0, glitch_3d: 0.8, dof: 0.5,
+        },
+    },
+
+    // Minimalista (solo partículas 3D, sin geometría)
+    minimalista: {
+        solo_particulas: {
+            geometria: 'esfera', escala: 0, deformacion: 0,  // mesh invisible
+            particulas_3d: 150, particulas_tamano: 0.03,
+            camara: 'estatica', iluminacion: 'ambiental',
+            bloom: 0.3, reactivo: true,
+        },
+    },
+};
+
+// ============================================================
+//  FUNCIÓN DE INTEGRACIÓN CON ORQUESTADOR
+// ============================================================
+/**
+ * Genera el código JavaScript que inicializa Three.js dentro de un HTML.
+ * Se inyecta como script adicional al template del orquestador.
+ */
+function generarThreejsSnippet(config) {
+    const preset = config.preset ? THREEJS_PRESETS[config.nivel]?.[config.preset] : null;
+    const cfg = preset ? Object.assign({}, preset, configoverride || {}) : config;
+
+    return `
+    <!-- THREE.JS LAYER -->
+    <canvas id="canvas3d" style="
+        position: absolute; top: 0; left: 0;
+        width: 100%; height: 100%;
+        z-index: 2;
+        pointer-events: none;
+    "></canvas>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"><\/script>
+    <script>
+    (function() {
+        const canvas3d = document.getElementById('canvas3d');
+        canvas3d.width = window.innerWidth;
+        canvas3d.height = window.innerHeight;
+
+        const cfg3d = ${JSON.stringify(cfg, null, 2)};
+
+        // Esperar a que Three.js esté disponible
+        if (typeof THREE === 'undefined') {
+            console.warn('Three.js no cargado — capa 3D desactivada');
+            return;
+        }
+
+        const layer3d = new ThreejsLayer(canvas3d, cfg3d);
+
+        // Hook al loop principal del orquestador
+        const _origUpdate = window.update;
+        if (_origUpdate) {
+            window.update = function(t, intensidad) {
+                _origUpdate(t, intensidad);
+                layer3d.update(t, intensidad);
+            };
+        } else {
+            // Fallback: loop independiente
+            function loop3d() {
+                const t = (performance.now() / 1000) % 12;
+                layer3d.update(t, 0.5);
+                requestAnimationFrame(loop3d);
+            }
+            loop3d();
+        }
+
+        // Resize
+        window.addEventListener('resize', () => {
+            layer3d.resize(window.innerWidth, window.innerHeight);
+        });
+
+        // Exponer para debug
+        window._layer3d = layer3d;
+    })();
+    <\/script>`;
+}
+
+// Export para uso en Node.js (orquestador Python lo importa como string)
+
+</script>
+
+<script>
+// === SISTEMA DE MOVIMIENTO (ADN) ===
+const PRIMITIVAS = {
+    flotar: (t, p) => ({
+        x: Math.sin(t * p.velocidad * 0.7 + p.fase) * p.amplitud * 20,
+        y: Math.sin(t * p.velocidad + p.fase) * p.amplitud * 40,
+        sx: 1, sy: 1, rot: 0
+    }),
+    orbitar: (t, p) => ({
+        x: Math.cos(t * p.velocidad + p.fase) * p.amplitud * 60,
+        y: Math.sin(t * p.velocidad * 0.8 + p.fase) * p.amplitud * 30,
+        sx: 1, sy: 1, rot: Math.sin(t * p.velocidad * 0.3) * 5
+    }),
+    latir: (t, p) => {
+        const pulso = Math.pow(Math.sin(t * p.velocidad * 3 + p.fase) * 0.5 + 0.5, 2);
+        const s = 1 + pulso * p.amplitud * 0.4;
+        return { x: 0, y: 0, sx: s, sy: s, rot: 0 };
+    },
+    temblor: (t, p) => ({
+        x: (Math.sin(t * 47.3 + p.fase) + Math.sin(t * 23.7)) * p.amplitud * 8,
+        y: (Math.cos(t * 31.1 + p.fase) + Math.cos(t * 19.9)) * p.amplitud * 6,
+        sx: 1, sy: 1, rot: Math.sin(t * 53.1 + p.fase) * p.amplitud * 4
+    }),
+    caer: (t, p) => {
+        const ciclo = t * p.velocidad * 0.5 + p.fase;
+        const progreso = ciclo % (Math.PI * 2);
+        const y = -Math.abs(Math.sin(progreso)) * p.amplitud * 120;
+        const rebote = Math.abs(Math.sin(progreso * 3)) * Math.max(0, -y) * 0.1;
+        return { x: Math.sin(ciclo * 0.3) * 15, y: y - rebote, sx: 1, sy: 1, rot: 0 };
+    },
+    ascender: (t, p) => {
+        const ciclo = (t * p.velocidad * 0.4 + p.fase) % (Math.PI * 2);
+        const y = Math.sin(ciclo) * p.amplitud * 100;
+        const fade = Math.max(0, Math.sin(ciclo)); // más visible arriba
+        return { x: Math.sin(ciclo * 2) * 20, y: y, sx: 1, sy: 1 + fade * 0.1, rot: 0 };
+    },
+    errar: (t, p) => {
+        const x = Math.sin(t * 1.3 * p.velocidad + p.fase) * 50 * p.amplitud
+                + Math.sin(t * 3.7 + p.fase * 2) * 15;
+        const y = Math.cos(t * 0.9 * p.velocidad + p.fase * 1.5) * 40 * p.amplitud
+                + Math.cos(t * 2.1 + p.fase * 3) * 10;
+        return { x, y, sx: 1, sy: 1, rot: Math.sin(t * 0.5) * 3 };
+    },
+    convulsionar: (t, p) => {
+        const espasmo = Math.sin(t * 15 + p.fase) * Math.sin(t * 7.3) * Math.sin(t * 3.1);
+        return {
+            x: espasmo * p.amplitud * 30,
+            y: Math.sin(t * 11 + p.fase) * p.amplitud * 20,
+            sx: 1 + Math.abs(espasmo) * 0.3,
+            sy: 1 - Math.abs(espasmo) * 0.2,
+            rot: espasmo * p.amplitud * 15
+        };
+    },
+    rotar: (t, p) => ({
+        x: 0, y: 0,
+        sx: 1, sy: 1,
+        rot: t * p.velocidad * 30 * p.amplitud + p.fase * 57.3
+    }),
+    colapsar: (t, p) => {
+        const ciclo = (t * p.velocidad * 0.6 + p.fase) % (Math.PI * 2);
+        const s = Math.abs(Math.sin(ciclo)) * p.amplitud;
+        const escala = Math.max(0.05, s);
+        return {
+            x: Math.sin(ciclo * 2) * 10,
+            y: Math.cos(ciclo * 3) * 8,
+            sx: escala, sy: escala,
+            rot: ciclo * 20
+        };
+    },
+    aspirar: (t, p) => {
+        const ciclo = t * p.velocidad * 0.8 + p.fase;
+        const inhalar = Math.sin(ciclo) * 0.5 + 0.5; // 0→1→0
+        const sx = 1 + inhalar * p.amplitud * 0.35;
+        const sy = 1 - inhalar * p.amplitud * 0.15;
+        return {
+            x: Math.sin(ciclo * 0.5) * 8,
+            y: Math.cos(ciclo * 0.7) * 12 * inhalar,
+            sx, sy, rot: 0
+        };
+    },
+    sangrar: (t, p) => {
+        const ciclo = t * p.velocidad * 0.3 + p.fase;
+        const gota = ciclo % (Math.PI * 2);
+        const progreso = gota / (Math.PI * 2);
+        const caida = Math.pow(progreso, 2.5); // aceleración exponencial
+        const y = caida * p.amplitud * 150;
+        const x = Math.sin(gota * 3) * progreso * 10;
+        const sy = 1 + caida * p.amplitud * 0.4;
+        return { x, y, sx: 1, sy, rot: 0 };
+    },
+    latido_frenetico: (t, p) => {
+        const base = t * p.velocidad * 5.0 + p.fase;
+        const pulso = Math.pow(Math.abs(Math.sin(base)), 8);
+        const segundo = Math.pow(Math.abs(Math.sin(base + 0.8)), 12) * 0.6;
+        const total = Math.min(1, pulso + segundo);
+        const s = 1 + total * p.amplitud * 0.5;
+        return {
+            x: total * Math.sin(base * 3) * 5,
+            y: 0,
+            sx: s, sy: s,
+            rot: total * Math.sin(base * 2) * 3
+        };
+    },
+    balancear: (t, p) => {
+        const ciclo = t * p.velocidad + p.fase;
+        const angulo = Math.sin(ciclo) * p.amplitud * 30;
+        const rad = angulo * Math.PI / 180;
+        const x = Math.sin(rad) * 80;
+        const y = (1 - Math.cos(rad)) * 40; // arco de péndulo
+        return { x, y, sx: 1, sy: 1, rot: angulo * 0.5 };
+    },
+    esconderse: (t, p) => {
+        const ciclo = (t * p.velocidad * 0.4 + p.fase) % (Math.PI * 2);
+        const fase = ciclo / (Math.PI * 2); // 0→1
+        let x, y;
+        if (fase < 0.3) {
+            const progreso = fase / 0.3;
+            x = -350 * (1 - progreso);
+            y = Math.sin(ciclo) * 30;
+        } else if (fase < 0.7) {
+            x = 0;
+            y = Math.sin(ciclo * 2) * 15;
+        } else {
+            const progreso = (fase - 0.7) / 0.3;
+            x = -350 * progreso;
+            y = Math.sin(ciclo) * 20;
+        }
+        const s = 0.8 + Math.abs(Math.sin(ciclo * 3)) * 0.2 * p.amplitud;
+        return { x, y, sx: s, sy: s, rot: 0 };
+    },
+};
+const NOMBRE_PRIMITIVAS = [
+    'flotar', 'orbitar', 'latir', 'temblor', 'caer',
+    'ascender', 'errar', 'convulsionar', 'rotar', 'colapsar',
+    'aspirar', 'sangrar', 'latido_frenetico', 'balancear', 'esconderse'
+];
+function crearMezcla(nombrePrim1, nombrePrim2, pesoSec = 0.3) {
+    const prim1 = PRIMITIVAS[nombrePrim1] || PRIMITIVAS.flotar;
+    const prim2 = PRIMITIVAS[nombrePrim2] || PRIMITIVAS.temblor;
+    const peso = Math.max(0, Math.min(1, pesoSec));
+    return function(t, params1, params2) {
+        const r1 = prim1(t, params1);
+        const r2 = prim2(t, params2);
+        return {
+            x: r1.x * (1 - peso) + r2.x * peso,
+            y: r1.y * (1 - peso) + r2.y * peso,
+            sx: r1.sx * (1 - peso) + r2.sx * peso,
+            sy: r1.sy * (1 - peso) + r2.sy * peso,
+            rot: r1.rot * (1 - peso) + r2.rot * peso,
+        };
+    };
+}
+function generarADN() {
+    const idx1 = Math.floor(Math.random() * NOMBRE_PRIMITIVAS.length);
+    let idx2 = Math.floor(Math.random() * NOMBRE_PRIMITIVAS.length);
+    while (idx2 === idx1) idx2 = Math.floor(Math.random() * NOMBRE_PRIMITIVAS.length);
+    return {
+        prim1: NOMBRE_PRIMITIVAS[idx1],
+        prim2: NOMBRE_PRIMITIVAS[idx2],
+        peso: 0.2 + Math.random() * 0.4, // 0.2 - 0.6
+        params1: {
+            fase: Math.random() * Math.PI * 2,
+            velocidad: 0.5 + Math.random() * 1.5,
+            amplitud: 0.3 + Math.random() * 1.2,
+        },
+        params2: {
+            fase: Math.random() * Math.PI * 2,
+            velocidad: 0.3 + Math.random() * 2.0,
+            amplitud: 0.2 + Math.random() * 1.0,
+        },
+    };
+}
+
+const DNA = {"prim1": "colapsar", "prim2": "convulsionar", "peso": 0.4, "params1": {"fase": 4.967, "velocidad": 1.09, "amplitud": 0.51}, "params2": {"fase": 3.507, "velocidad": 1.86, "amplitud": 0.5}};
+const mezclaFn = crearMezcla(DNA.prim1, DNA.prim2, DNA.peso);
+
+// === PARALLAX ===
+const PARALLAX = null;
+let mezclaBg = null, mezclaFg = null;
+const parallaxBg = document.getElementById('parallaxBg');
+const parallaxFg = document.getElementById('parallaxFg');
+if (PARALLAX) {
+    mezclaBg = crearMezcla(PARALLAX.bg.dna.prim1, PARALLAX.bg.dna.prim2, PARALLAX.bg.dna.peso);
+    mezclaFg = crearMezcla(PARALLAX.fg.dna.prim1, PARALLAX.fg.dna.prim2, PARALLAX.fg.dna.peso);
+    parallaxBg.style.opacity = PARALLAX.bg.opacity;
+    parallaxFg.style.opacity = PARALLAX.fg.opacity;
+}
+
+const subtitulos = [{"inicio": 0.74, "fin": 3.6, "texto": "EL ESPEJO NO MUESTRA TU LADO.", "glitch": false}, {"inicio": 4.03, "fin": 5.62, "texto": "ALGUIEN ESTÁ EN TU HABITACIÓN.", "glitch": false}, {"inicio": 6.39, "fin": 9.37, "texto": "NO HAY SALIDA.", "glitch": true}];
+const DURACION = 12.0;
+const cajaTexto = document.getElementById('cajaTexto');
+const filtroDesplazamiento = document.getElementById('desplazamiento');
+const entidad = document.getElementById('entidad');
+const transicionFade = document.getElementById('transicionFade');
+const barraDirector = document.getElementById('barraDirector');
+
+// === CAPA DIRECTOR: Curva de intensidad por minuto ===
+// Define puntos clave: [tiempo_seg, intensidad_0a1]
+// La intensidad controla: zoom, displacement, partículas, glitch
+const DIRECTOR_CURVA = [
+    [0.0,  0.1],   // Inicio: calma
+    [2.0,  0.3],   // Primer susurro: leve tensión
+    [4.0,  0.2],   // Pausa breve
+    [6.0,  0.6],   // Subida de tensión
+    [7.5,  0.9],   // Pico de caos
+    [8.5,  0.4],   // Caída
+    [10.0, 0.7],   // Segundo pico
+    [11.5, 0.3],   // Resolución oscura
+    [12.0, 0.1],   // Final
+];
+
+function getDirectorIntensity(t) {
+    // Interpolar entre puntos clave
+    for (let i = 0; i < DIRECTOR_CURVA.length - 1; i++) {
+        const [t0, v0] = DIRECTOR_CURVA[i];
+        const [t1, v1] = DIRECTOR_CURVA[i + 1];
+        if (t >= t0 && t <= t1) {
+            const ratio = (t - t0) / (t1 - t0);
+            return v0 + (v1 - v0) * ratio;
+        }
+    }
+    return 0.1;
+}
+
+// === SISTEMA DE PARTÍCULAS (canvas separado) ===
+const canvasParticulas = document.getElementById('canvasParticulas');
+const ctxPart = canvasParticulas.getContext('2d');
+canvasParticulas.width = window.innerWidth;
+canvasParticulas.height = window.innerHeight;
+
+class Particula {
+    constructor(w, h) { this.reset(w, h, true); }
+    reset(w, h, init) {
+        this.x = Math.random() * w;
+        this.y = init ? Math.random() * h : -10;
+        this.vx = (Math.random() - 0.5) * 0.5;
+        this.vy = 0.2 + Math.random() * 0.8;
+        this.size = 0.5 + Math.random() * 2.5;
+        this.opacity = 0.1 + Math.random() * 0.4;
+        this.life = 0;
+        this.maxLife = 200 + Math.random() * 300;
+    }
+    update(w, h, intensidad) {
+        this.life++;
+        this.x += this.vx + Math.sin(this.life * 0.02) * 0.3;
+        this.y += this.vy * (0.5 + intensidad);
+        this.opacity = Math.min(this.opacity, (1 - this.life / this.maxLife) * 0.5);
+        if (this.y > h || this.life > this.maxLife) this.reset(w, h, false);
+    }
+    draw(ctx) {
+        ctx.fillStyle = 'rgba(255,255,255,' + this.opacity + ')';
+        ctx.fillRect(this.x, this.y, this.size, this.size);
+    }
+}
+
+const MAX_PARTICULAS = 80;
+const particulas = [];
+for (let i = 0; i < MAX_PARTICULAS; i++) {
+    particulas.push(new Particula(canvasParticulas.width, canvasParticulas.height));
+}
+
+function dibujarParticulas(intensidad) {
+    ctxPart.clearRect(0, 0, canvasParticulas.width, canvasParticulas.height);
+    const visibles = Math.floor(MAX_PARTICULAS * (0.3 + intensidad * 0.7));
+    for (let i = 0; i < visibles; i++) {
+        particulas[i].update(canvasParticulas.width, canvasParticulas.height, intensidad);
+        particulas[i].draw(ctxPart);
+    }
+}
+
+// === TRANSICIONES DE ESCENA ===
+let escenaAnterior = -1;
+let transicionActiva = false;
+
+function detectarTransicion(t) {
+    // Detectar cuando entramos a una nueva escena (bloque de subtítulo)
+    let escenaActual = -1;
+    for (let i = 0; i < subtitulos.length; i++) {
+        if (t >= subtitulos[i].inicio && t <= subtitulos[i].fin) {
+            escenaActual = i;
+            break;
+        }
+    }
+    // Si cambió la escena, activar transición
+    if (escenaActual !== escenaAnterior && escenaActual !== -1 && escenaAnterior !== -1) {
+        transicionActiva = true;
+        // Glitch-cut: flash rápido + distorsión
+        transicionFade.style.opacity = '0.8';
+        setTimeout(() => { transicionFade.style.opacity = '0'; transicionActiva = false; }, 150);
+    }
+    escenaAnterior = escenaActual;
+    return transicionActiva;
+}
+
+// === AUDIO REACTIVO ===
+const btnAudio = document.getElementById('btnAudio');
+const audioP = document.getElementById('audioP');
+const audioS = document.getElementById('audioS');
+let audioActivo = false;
+let audioRMS = 0;
+let audioContext = null;
+let analyzer = null;
+let dataArray = null;
+
+function initAudioReactive() {
+    if (audioContext) return;
+    try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        analyzer = audioContext.createAnalyser();
+        analyzer.fftSize = 256;
+        dataArray = new Uint8Array(analyzer.frequencyBinCount);
+        if (audioP) {
+            const source = audioContext.createMediaElementSource(audioP);
+            source.connect(analyzer);
+            analyzer.connect(audioContext.destination);
+        }
+    } catch(e) { /* Web Audio no soportado */ }
+}
+
+function getAudioRMS() {
+    if (!analyzer || !dataArray) return 0;
+    analyzer.getByteFrequencyData(dataArray);
+    let sum = 0;
+    for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+    return sum / (dataArray.length * 255); // Normalizado 0-1
+}
+
+if (btnAudio) {
+    btnAudio.onclick = function() {
+        if (audioActivo) {
+            if (audioP) audioP.pause();
+            if (audioS) audioS.pause();
+            btnAudio.innerHTML = '&#9654; SONIDO';
+            audioActivo = false;
+        } else {
+            initAudioReactive();
+            if (audioP) { audioP.volume = 0.7; audioP.play().catch(function(){}); }
+            if (audioS) { audioS.volume = 0.3; audioS.play().catch(function(){}); }
+            btnAudio.innerHTML = '&#9209; MUTE';
+            audioActivo = true;
+        }
+    };
+}
+document.addEventListener('click', function() {
+    if (!audioActivo && btnAudio) btnAudio.click();
+}, { once: true });
+
+// === NARRATIVA ===
+function actualizarNarrativa(t) {
+    let textoActivo = "";
+    let modoMaldito = false;
+    for (let i = 0; i < subtitulos.length; i++) {
+        if (t >= subtitulos[i].inicio && t <= subtitulos[i].fin) {
+            textoActivo = subtitulos[i].texto;
+            if (subtitulos[i].glitch) modoMaldito = true;
+            break;
+        }
+    }
+    cajaTexto.innerHTML = textoActivo;
+    if (modoMaldito) cajaTexto.classList.add('glitch-texto');
+    else cajaTexto.classList.remove('glitch-texto');
+    return modoMaldito;
+}
+
+// === WEBGL SHADER ===
+const canvasFondo = document.getElementById('canvasFondo');
+const gl = canvasFondo.getContext('webgl');
+canvasFondo.width = window.innerWidth; canvasFondo.height = window.innerHeight;
+gl.viewport(0, 0, canvasFondo.width, canvasFondo.height);
+
+const vs = `attribute vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }`;
+const fs = `
+    precision mediump float;
+    uniform vec2 u_res;
+    uniform float u_time;
+    uniform float u_zoom;
+    void main() {
+        vec2 st = (gl_FragCoord.xy / u_res.xy - 0.5) * u_zoom;
+        st.x *= u_res.x / u_res.y;
+        
+        float respiracion = sin(u_time * 2.0) * cos(u_time * 0.5) * 0.1 + 0.45;
+        float d = length(st);
+        float luz = smoothstep(respiracion, respiracion - 0.4, d);
+        gl_FragColor = vec4(vec3(0.6, 0.0, 0.0) * luz, 1.0);
+    
+    }
+`;
+function comp(gl, src, t) { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s); return s; }
+const prog = gl.createProgram();
+gl.attachShader(prog, comp(gl, vs, gl.VERTEX_SHADER));
+gl.attachShader(prog, comp(gl, fs, gl.FRAGMENT_SHADER));
+gl.linkProgram(prog); gl.useProgram(prog);
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]), gl.STATIC_DRAW);
+const pLoc = gl.getAttribLocation(prog, "p");
+gl.enableVertexAttribArray(pLoc); gl.vertexAttribPointer(pLoc, 2, gl.FLOAT, false, 0, 0);
+const resLoc = gl.getUniformLocation(prog, "u_res");
+const timeLoc = gl.getUniformLocation(prog, "u_time");
+const zoomLoc = gl.getUniformLocation(prog, "u_zoom");
+
+// === ESTACTICA CRT ===
+const canvasEstatica = document.getElementById('canvasEstatica');
+const ctx = canvasEstatica.getContext('2d');
+canvasEstatica.width = window.innerWidth; canvasEstatica.height = window.innerHeight;
+
+let valorZoom = 1.0;
+let tiempoInicio = performance.now();
+
+// === THREE.JS LAYER (capa 3D opcional) ===
+let layer3d = null;
+const threejsConfig = {"geometria": "esfera", "escala": 1.8, "deformacion": 0.5, "camara": "orbitar", "camara_velocidad": 0.4, "camara_distancia": 3.5, "iluminacion": "neon", "luz_intensidad": 2.0, "particulas_3d": 80, "bloom": 0.6, "reactivo": true, "color_base": "#ff0044"};
+if (threejsConfig && typeof THREE !== 'undefined') {
+    try {
+        const c3d = document.getElementById('canvas3d');
+        c3d.width = window.innerWidth;
+        c3d.height = window.innerHeight;
+        layer3d = new ThreejsLayer(c3d, threejsConfig);
+    } catch(e) {
+        console.warn('Three.js layer init failed:', e);
+    }
+} else if (threejsConfig) {
+    // Three.js CDN aún cargando — reintentar
+    const _retry3d = setInterval(function() {
+        if (typeof THREE !== 'undefined') {
+            clearInterval(_retry3d);
+            try {
+                const c3d = document.getElementById('canvas3d');
+                c3d.width = window.innerWidth;
+                c3d.height = window.innerHeight;
+                layer3d = new ThreejsLayer(c3d, threejsConfig);
+            } catch(e) {
+                console.warn('Three.js layer init failed:', e);
+            }
+        }
+    }, 200);
+    setTimeout(function() { clearInterval(_retry3d); }, 5000);
+}
+
+function animar(tiempo) {
+    let t = (tiempo - tiempoInicio) * 0.001;
+    ctx.clearRect(0, 0, canvasEstatica.width, canvasEstatica.height);
+
+    if (t > DURACION) { tiempoInicio = performance.now(); t = 0; escenaAnterior = -1; }
+
+    let kaosActivo = actualizarNarrativa(t);
+    let intensidad = getDirectorIntensity(t);
+    detectarTransicion(t);
+
+    // Audio reactivo: mezclar RMS del audio con la intensidad del director
+    if (audioActivo) audioRMS = getAudioRMS();
+    let intensidadFinal = Math.min(1.0, intensidad * 0.7 + audioRMS * 0.3);
+
+    // === THREE.JS UPDATE ===
+    if (layer3d) layer3d.update(t, intensidadFinal);
+
+    // Barra del director (progreso visual)
+    barraDirector.style.width = (t / DURACION * 100) + '%';
+
+    // Partículas reactivas
+    dibujarParticulas(intensidadFinal);
+
+    // === MOVIMIENTO POR ADN (modulado por director + audio) ===
+    const mov = mezclaFn(t, DNA.params1, DNA.params2);
+    // El director amplifica o reduce el movimiento
+    const movScale = 0.5 + intensidadFinal * 1.0;
+    const cx = 400 + mov.x * movScale;
+    const cy = 400 + mov.y * movScale;
+
+    if (kaosActivo || intensidadFinal > 0.7) {
+        // === MODO CAOS (director alto o glitch activo) ===
+        const caosExtra = intensidadFinal * 0.5;
+        valorZoom = 0.4 + Math.random() * 0.2 + caosExtra * 0.3;
+        filtroDesplazamiento.setAttribute('scale', Math.random() * 160 * intensidadFinal + 40);
+        const gx = mov.x + (Math.random() - 0.5) * 80 * intensidadFinal;
+        const gy = mov.y + (Math.random() - 0.5) * 80 * intensidadFinal;
+        entidad.setAttribute('transform',
+            'translate(' + (400 + gx) + ', ' + (400 + gy) + ') ' +
+            'scale(' + (mov.sx + Math.random() * 0.3 * intensidadFinal) + ') ' +
+            'skewX(' + ((Math.random() - 0.5) * 50 * intensidadFinal) + ') ' +
+            'rotate(' + (mov.rot + (Math.random() - 0.5) * 30 * intensidadFinal) + ')');
+        // Scanlines más densos
+        ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
+        for (let i = 0; i < 20 * intensidadFinal; i++) {
+            ctx.fillRect(0, Math.random() * canvasEstatica.height, canvasEstatica.width, Math.random() * 25);
+        }
+        ctx.fillStyle = 'rgba(' + (Math.random()*255|0) + ', 0, 0, ' + (0.15 * intensidadFinal) + ')';
+        ctx.fillRect(0, Math.random() * canvasEstatica.height, canvasEstatica.width, Math.random() * 80);
+        if (audioS) audioS.volume = 0.3 + intensidadFinal * 0.4;
+        if (audioP) audioP.volume = 0.7 - intensidadFinal * 0.4;
+    } else {
+        // === MODO CALMA (director bajo) ===
+        valorZoom += (1.0 - valorZoom) * 0.12;
+        filtroDesplazamiento.setAttribute('scale', Math.sin(t * 8) * (4 + intensidadFinal * 10));
+        entidad.setAttribute('transform',
+            'translate(' + cx + ', ' + cy + ') ' +
+            'scale(' + mov.sx + ', ' + mov.sy + ') ' +
+            'rotate(' + mov.rot + ')');
+        if (Math.random() > 0.96) {
+            ctx.fillStyle = "rgba(255, 255, 255, 0.1)";
+            ctx.fillRect(0, Math.random() * canvasEstatica.height, canvasEstatica.width, 12);
+        }
+        if (audioS) audioS.volume = 0.3;
+        if (audioP) audioP.volume = 0.7;
+    }
+
+    // === PARALLAX: capas额外 a diferentes velocidades ===
+    if (PARALLAX && mezclaBg && mezclaFg) {
+        const movBg = mezclaBg(t * PARALLAX.bg.speed, PARALLAX.bg.dna.params1, PARALLAX.bg.dna.params2);
+        const movFg = mezclaFg(t * PARALLAX.fg.speed, PARALLAX.fg.dna.params1, PARALLAX.fg.dna.params2);
+        const bgScale = PARALLAX.bg.scale;
+        const fgScale = PARALLAX.fg.scale;
+        parallaxBg.setAttribute('transform',
+            'translate(' + (400 + movBg.x * movScale * 0.5) + ', ' + (400 + movBg.y * movScale * 0.5) + ') ' +
+            'scale(' + bgScale + ')');
+        parallaxFg.setAttribute('transform',
+            'translate(' + (400 + movFg.x * movScale * 1.5) + ', ' + (400 + movFg.y * movScale * 1.5) + ') ' +
+            'scale(' + fgScale + ')');
+        // Parallax reacciona al glitch
+        if (kaosActivo || intensidadFinal > 0.7) {
+            const jitter = intensidadFinal * 20;
+            parallaxBg.setAttribute('transform',
+                'translate(' + (400 + movBg.x + (Math.random()-0.5)*jitter) + ', ' + (400 + movBg.y + (Math.random()-0.5)*jitter) + ') ' +
+                'scale(' + bgScale + ') rotate(' + ((Math.random()-0.5)*10) + ')');
+            parallaxFg.setAttribute('transform',
+                'translate(' + (400 + movFg.x + (Math.random()-0.5)*jitter*2) + ', ' + (400 + movFg.y + (Math.random()-0.5)*jitter*2) + ') ' +
+                'scale(' + fgScale + ') rotate(' + ((Math.random()-0.5)*15) + ')');
+        }
+    }
+
+    // === SHADER (modulado por intensidad + audio) ===
+    gl.uniform2f(resLoc, canvasFondo.width, canvasFondo.height);
+    gl.uniform1f(timeLoc, t);
+    gl.uniform1f(zoomLoc, valorZoom + audioRMS * 0.5); // Audio amplifica zoom
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+    // === CRT SCANLINES ===
+    ctx.fillStyle = "rgba(0, 0, 0, 0.06)";
+    for (let y = 0; y < canvasEstatica.height; y += 5) {
+        ctx.fillRect(0, y + (tiempo * 0.08 % 5), canvasEstatica.width, 2);
+    }
+
+    // === VIÑETA (modulada por director) ===
+    let grad = ctx.createRadialGradient(
+        canvasEstatica.width/2, canvasEstatica.height/2, canvasEstatica.width * 0.3,
+        canvasEstatica.width/2, canvasEstatica.height/2, canvasEstatica.width * 0.7
+    );
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(1, 'rgba(0,0,0,' + (0.3 + intensidadFinal * 0.3) + ')');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, canvasEstatica.width, canvasEstatica.height);
+
+    requestAnimationFrame(animar);
+}
+requestAnimationFrame(animar);
+
+window.onresize = function() {
+    canvasFondo.width = window.innerWidth; canvasFondo.height = window.innerHeight;
+    gl.viewport(0, 0, canvasFondo.width, canvasFondo.height);
+    canvasEstatica.width = window.innerWidth; canvasEstatica.height = window.innerHeight;
+    canvasParticulas.width = window.innerWidth; canvasParticulas.height = window.innerHeight;
+    const c3d = document.getElementById('canvas3d');
+    if (c3d) { c3d.width = window.innerWidth; c3d.height = window.innerHeight; }
+    if (layer3d) layer3d.resize(window.innerWidth, window.innerHeight);
+};
+</script>
+</body>
+</html>
