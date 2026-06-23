@@ -1,0 +1,83 @@
+name: Generate Demo GIF
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'demos/**'
+      - 'index.html'
+  workflow_dispatch:
+
+jobs:
+  generate-gif:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y imagemagick
+          npm install puppeteer
+      
+      - name: Capture screenshots
+        run: |
+          mkdir -p screenshots
+          node -e "
+          const puppeteer = require('puppeteer');
+          
+          const demos = [
+            { url: 'file:///runner/terror-visual-pipeline/demos/16_esfera_flotante_3d/index.html', name: 'esfera' },
+            { url: 'file:///runner/terror-visual-pipeline/demos/17_monolito_corrupto/index.html', name: 'monolito' },
+            { url: 'file:///runner/terror-visual-pipeline/demos/18_lovecraft_total/index.html', name: 'lovecraft' },
+            { url: 'file:///runner/terror-visual-pipeline/demos/19_toro_siniestro/index.html', name: 'toro' },
+            { url: 'file:///runner/terror-visual-pipeline/demos/20_colapso_total/index.html', name: 'colapso' },
+          ];
+          
+          (async () => {
+            const browser = await puppeteer.launch({
+              headless: 'new',
+              args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu']
+            });
+            
+            for (const demo of demos) {
+              try {
+                const page = await browser.newPage();
+                await page.setViewport({ width: 1280, height: 720 });
+                await page.goto(demo.url, { waitUntil: 'networkidle0', timeout: 15000 });
+                await new Promise(r => setTimeout(r, 2000));
+                await page.screenshot({ path: 'screenshots/' + demo.name + '.png' });
+                await page.close();
+                console.log('Captured: ' + demo.name);
+              } catch (e) {
+                console.log('Skip: ' + demo.name + ' - ' + e.message);
+              }
+            }
+            
+            await browser.close();
+          })();
+          "
+      
+      - name: Create GIF
+        run: |
+          if ls screenshots/*.png 1>/dev/null 2>&1; then
+            convert -delay 50 -loop 0 screenshots/*.png demo-preview.gif
+            convert -resize 600x340 demo-preview.gif demo-preview.gif
+            echo "GIF created"
+          else
+            echo "No screenshots captured"
+          fi
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        if: hashFiles('screenshots/*.png') != ''
+        with:
+          name: demo-gif
+          path: demo-preview.gif
